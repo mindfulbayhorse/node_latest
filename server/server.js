@@ -1,44 +1,64 @@
-import * as http from 'http';
-import * as util from 'util';
-import * as os from 'os';
-const listenOn = 'http://localhost:8124';
-const server = http.createServer();
-server.on('request', (req, res) => {
-    var requrl = new URL(req.url, listenOn);
-    if (requrl.pathname === '/') homePage(req, res);
-    else if (requrl.pathname === "/osinfo") osInfo(req, res);
-    else {
-        res.writeHead(404, {'Content-Type': 'text/plain'});
-        res.end("bad URL "+ req.url);
+
+const util = require('util');
+const url  = require('url');
+
+const timestamp = () => { return new Date().toISOString(); }
+
+exports.sniffOn = function(server) {
+    // Emitted each time there is request.
+    // request is an instance of http.ServerRequest
+    // response is an instance of http.ServerResponse
+    server.on('request', (req, res) => {
+        console.log(`${timestamp()} request`);
+        console.log(`${timestamp()} ${reqToString(req)}`);
+    });
+
+    // Called when a new TCP stream is established.
+    // stream is an object of type net.Stream.
+    // Usually users will not want to access this event.
+    // The stream can also be accessed at request.connection.
+    // var e_connection = function(stream) {
+    // };
+
+    // Emitted when the server closes.
+    server.on('close', errno => { console.log(`${timestamp()} close errno=${errno}`); });
+
+    // Emitted each time a request with an http Expect: 100-continue is received.
+    // If this event isn't listened for,
+    // the server will automatically respond with a 100 Continue as appropriate.
+    // Handling this event involves calling response.writeContinue
+    // if the client should continue to send the request body,
+    // or generating an appropriate HTTP response (e.g., 400 Bad Request)
+    // if the client should not continue to send the request body.
+    server.on('checkContinue', (req, res) => {
+        console.log(`${timestamp()} checkContinue`);
+        console.log(`${timestamp()} ${reqToString(req)}`);
+        res.writeContinue();
+    });
+
+    // Emitted each time a client requests a http upgrade.
+    // If this event isn't listened for,
+    // then clients requesting an upgrade will have their connections closed.
+    server.on('upgrade', (req, socket, head) => {
+        console.log(`${timestamp()} upgrade`);
+        console.log(`${timestamp()} ${reqToString(req)}`);
+    });
+
+    // If a client connection emits an 'error' event - it will forwarded here.
+    server.on('clientError', () => { console.log('clientError'); });
+
+    // server.on('connection',    e_connection);
+};
+
+const reqToString = exports.reqToString = (req) => {
+    var ret = `request ${req.method} ${req.httpVersion} ${req.url}` +'\n';
+    ret += JSON.stringify(url.parse(req.url, true)) +'\n';
+    var keys = Object.keys(req.headers);
+    for (var i = 0, l = keys.length; i < l; i++) {
+        var key = keys[i];
+        ret += `${i} ${key}: ${req.headers[key]}` +'\n';
     }
-});
-server.listen(new URL(listenOn).port);
-console.log(`listening to ${listenOn}`);
-function homePage(req, res) {
-    res.writeHead(200, {'Content-Type': 'text/html'});
-    res.end(
-        `<html><head><title>Hello, world!</title></head>
-<body><h1>Hello, world!</h1>
-<p><a href='/osinfo'>OS Info</a></p>
-</body></html>`);
-}
-function osInfo(req, res) {
-    res.writeHead(200, {'Content-Type': 'text/html'});
-    res.end(
-        `<html><head><title>Operating System Info</title></head>
-<body><h1>Operating System Info</h1>
-<table>
-<tr><th>TMP Dir</th><td>${os.tmpdir()}</td></tr>
-<tr><th>Host Name</th><td>${os.hostname()}</td></tr>
-<tr><th>OS Type</th><td>${os.type()} ${os.platform()}
-            ${os.arch()} ${os.release()}</td></tr>
-<tr><th>Uptime</th><td>${os.uptime()}
-${util.inspect(os.loadavg())}</td></tr>
-<tr><th>Memory</th><td>total: ${os.totalmem()} free:
-${os.freemem()}</td></tr>
-<tr><th>CPU's</th><td><pre>${util.inspect(os.cpus())}</pre></td></tr>
-<tr><th>Network</th><td><pre>${util.inspect(os.networkInterfaces())}</
-pre></td></tr>
-</table>
-</body></html>`);
-}
+    if (req.trailers)
+        ret += util.inspect(req.trailers) +'\n';
+    return ret;
+};
